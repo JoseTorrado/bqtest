@@ -71,7 +71,7 @@ tests:
 	}
 
 	// Validate the config
-	// if err := config.Validate(); err != nil {
-	// 	t.Errorf("Config validation failed: %v", err)
-	// }
+	if err := config.Validate(); err != nil {
+		t.Errorf("Config validation failed: %v", err)
+	}
 }
