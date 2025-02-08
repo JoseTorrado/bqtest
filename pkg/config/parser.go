@@ -12,8 +12,8 @@ import (
 
 // TestConfig represents the structure of the YAML test config
 type TestConfig struct {
-	Tests    []models.Test `yaml:tests`
-	BasePath string        `yaml:base_path`
+	Tests    []models.Test `yaml:"tests"`
+	BasePath string        `yaml:"base_path"`
 }
 
 func ParseTestConfig(filename string) (*TestConfig, error) {

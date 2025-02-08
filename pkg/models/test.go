@@ -3,6 +3,8 @@ package models
 import (
 	"errors"
 	"path/filepath"
+
+	"github.com/JoseTorrado/bqtest/pkg/fileutil"
 )
 
 // Test represents a single BigQuery test case
@@ -10,6 +12,7 @@ type Test struct {
 	Name           string `yaml:"name"`
 	QueryFile      string `yaml:"query_file"`
 	ExpectedOutput string `yaml:"expected_output"`
+	query          string
 }
 
 func (t *Test) Validate() error {
@@ -29,4 +32,15 @@ func (t *Test) Validate() error {
 		return errors.New("expected output file must have .csv extension")
 	}
 	return nil
+}
+
+func (t *Test) GetQuery() (string, error) {
+	if t.query == "" {
+		var err error
+		t.query, err = fileutil.ReadSQLFile(t.QueryFile)
+		if err != nil {
+			return "", err
+		}
+	}
+	return t.query, nil
 }
