@@ -3,6 +3,7 @@ package models
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -118,5 +119,62 @@ func TestGetQuery(t *testing.T) {
 
 	if cachedQuery != expectedQuery {
 		t.Errorf("Expected cached query %q, got %q", expectedQuery, cachedQuery)
+	}
+}
+
+func TestGetExpectedOutput(t *testing.T) {
+	// Create a temporary directory
+	tmpDir, err := os.MkdirTemp("", "testexpectedoutput")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a test CSV file
+	testCSV := "column1,column2,column3\nvalue1,value2,value3\nvalue4,value5,value6"
+	csvFilePath := filepath.Join(tmpDir, "expected.csv")
+	err = os.WriteFile(csvFilePath, []byte(testCSV), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test instance
+	test := Test{
+		Name:           "Test Expected Output",
+		QueryFile:      "dummy.sql",
+		ExpectedOutput: csvFilePath,
+	}
+
+	// Test GetExpectedOutput method
+	output, err := test.GetExpectedOutput()
+	if err != nil {
+		t.Fatalf("Failed to get expected output: %v", err)
+	}
+
+	expectedOutput := [][]string{
+		{"column1", "column2", "column3"},
+		{"value1", "value2", "value3"},
+		{"value4", "value5", "value6"},
+	}
+
+	if !reflect.DeepEqual(output, expectedOutput) {
+		t.Errorf("Expected output %v, got %v", expectedOutput, output)
+	}
+
+	// Test caching
+	// Modify the file content
+	err = os.WriteFile(csvFilePath, []byte("new,csv,content"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GetExpectedOutput should return the cached version
+	cachedOutput, err := test.GetExpectedOutput()
+	if err != nil {
+		t.Fatalf("Failed to get cached expected output: %v", err)
+	}
+
+	if !reflect.DeepEqual(cachedOutput, expectedOutput) {
+		t.Errorf("Expected cached output %v, got %v", expectedOutput, cachedOutput)
 	}
 }

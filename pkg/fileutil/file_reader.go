@@ -1,6 +1,7 @@
 package fileutil
 
 import (
+	"encoding/csv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,4 +38,18 @@ func ReadSQLFiles(filenames ...string) (map[string]string, error) {
 	return queries, nil
 }
 
-func Read
+func ReadCSVFile(filename string) ([][]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}

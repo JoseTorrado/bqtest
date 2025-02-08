@@ -9,10 +9,11 @@ import (
 
 // Test represents a single BigQuery test case
 type Test struct {
-	Name           string `yaml:"name"`
-	QueryFile      string `yaml:"query_file"`
-	ExpectedOutput string `yaml:"expected_output"`
-	query          string
+	Name           string     `yaml:"name"`
+	QueryFile      string     `yaml:"query_file"`
+	ExpectedOutput string     `yaml:"expected_output"`
+	query          string     // cached query content
+	expectedData   [][]string // cached expected output data
 }
 
 func (t *Test) Validate() error {
@@ -43,4 +44,15 @@ func (t *Test) GetQuery() (string, error) {
 		}
 	}
 	return t.query, nil
+}
+
+func (t *Test) GetExpectedOutput() ([][]string, error) {
+	if t.expectedData == nil {
+		var err error
+		t.expectedData, err = fileutil.ReadCSVFile(t.ExpectedOutput)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t.expectedData, nil
 }
