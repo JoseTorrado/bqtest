@@ -36,3 +36,5 @@ func ReadSQLFiles(filenames ...string) (map[string]string, error) {
 
 	return queries, nil
 }
+
+func Read
