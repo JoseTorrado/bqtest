@@ -3,8 +3,10 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"cloud.google.com/go/bigquery"
+	"github.com/JoseTorrado/bqtest/pkg/fileutil"
 	"github.com/JoseTorrado/bqtest/pkg/models"
 	"github.com/goccy/bigquery-emulator/server"
 	"github.com/goccy/bigquery-emulator/types"
@@ -16,6 +18,10 @@ type TestRunner struct {
 	Client *bigquery.Client
 	server *server.Server
 }
+
+const (
+	testDatasetID = "test_dataset"
+)
 
 func NewTestRunner() (*TestRunner, error) {
 	ctx := context.Background()
@@ -48,14 +54,85 @@ func NewTestRunner() (*TestRunner, error) {
 	}, nil
 }
 
+// Add this new method to TestRunner
+func (r *TestRunner) ensureDatasetExists(ctx context.Context) error {
+	dataset := r.Client.Dataset(testDatasetID)
+	meta, err := dataset.Metadata(ctx)
+	if err != nil {
+		// If the dataset doesn't exist, create it
+		if err := dataset.Create(ctx, &bigquery.DatasetMetadata{}); err != nil {
+			return fmt.Errorf("failed to create dataset: %v", err)
+		}
+	} else if meta != nil {
+		// Dataset already exists
+		return nil
+	}
+	return nil
+}
+
+func (r *TestRunner) LoadTestData(test *models.Test) error {
+	ctx := context.Background()
+
+	// Vlaidate datset exists
+	if err := r.ensureDatasetExists(ctx); err != nil {
+		return err
+	}
+
+	// Read the CSV file
+	records, err := fileutil.ReadCSVFile(test.InputFile)
+	if err != nil {
+		return fmt.Errorf("Failed to read input CSV: %v", err)
+	}
+
+	// Create a schema based on the first row of the CSV
+	var schema bigquery.Schema
+	headers := records[0]
+	for _, header := range headers {
+		schema = append(schema, &bigquery.FieldSchema{Name: header, Type: bigquery.StringFieldType})
+	}
+
+	// Create the table
+	tableRef := r.Client.Dataset(testDatasetID).Table(test.TableName)
+	if err := tableRef.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
+		return fmt.Errorf("failed to create table: %v", err)
+	}
+
+	// Prepare the data for insertion
+	var rows [][]bigquery.Value
+	for _, record := range records[1:] { // Skip the header row
+		row := make([]bigquery.Value, len(headers))
+		for i, value := range record {
+			if i < len(headers) {
+				row[i] = value
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	// Insert the data
+	inserter := tableRef.Inserter()
+	if err := inserter.Put(ctx, rows); err != nil {
+		return fmt.Errorf("failed to insert data: %v", err)
+	}
+
+	return nil
+}
+
 // I am still shaky on this function... Need to look over it
 func (r *TestRunner) RunTest(test *models.Test) ([][]string, error) {
 	ctx := context.Background()
+	// Load the test data
+	if err := r.LoadTestData(test); err != nil {
+		return nil, fmt.Errorf("failed to load test data: %v", err)
+	}
 
 	query, err := test.GetQuery()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get query: %v", err)
+		return nil, fmt.Errorf("failed to get query: %v", err)
 	}
+
+	// Replace table name in query if necessary
+	query = strings.ReplaceAll(query, "${TABLE}", fmt.Sprintf("`%s.%s`", testDatasetID, test.TableName))
 
 	q := r.Client.Query(query)
 	job, err := q.Run(ctx)

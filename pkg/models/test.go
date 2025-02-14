@@ -11,7 +11,9 @@ import (
 type Test struct {
 	Name           string     `yaml:"name"`
 	QueryFile      string     `yaml:"query_file"`
+	InputFile      string     `yaml:"input_file"`
 	ExpectedOutput string     `yaml:"expected_output"`
+	TableName      string     `yaml:"table_name"`
 	query          string     // cached query content
 	expectedData   [][]string // cached expected output data
 }
@@ -31,6 +33,15 @@ func (t *Test) Validate() error {
 	}
 	if filepath.Ext(t.ExpectedOutput) != ".csv" {
 		return errors.New("expected output file must have .csv extension")
+	}
+	if t.InputFile == "" {
+		return errors.New("input file path cannot be empty")
+	}
+	if filepath.Ext(t.InputFile) != ".csv" {
+		return errors.New("input file must have .csv extension")
+	}
+	if t.TableName == "" {
+		return errors.New("table name cannot be empty")
 	}
 	return nil
 }
