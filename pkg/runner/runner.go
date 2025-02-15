@@ -3,9 +3,13 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
 
 	"cloud.google.com/go/bigquery"
+	"cloud.google.com/go/civil"
 	"github.com/JoseTorrado/bqtest/pkg/fileutil"
 	"github.com/JoseTorrado/bqtest/pkg/models"
 	"github.com/goccy/bigquery-emulator/server"
@@ -23,6 +27,11 @@ const (
 	testDatasetID = "test_dataset"
 )
 
+// ValueSaverRow implements the ValueSaver interface
+type ValueSaverRow struct {
+	Row []bigquery.Value
+}
+
 func NewTestRunner() (*TestRunner, error) {
 	ctx := context.Background()
 
@@ -31,6 +40,8 @@ func NewTestRunner() (*TestRunner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create BigQuery emulator: %v", err)
 	}
+
+	srv.SetLogLevel("error")
 
 	// Create a test project
 	if err := srv.Load(server.StructSource(types.NewProject("test-project"))); err != nil {
@@ -73,7 +84,7 @@ func (r *TestRunner) ensureDatasetExists(ctx context.Context) error {
 func (r *TestRunner) LoadTestData(test *models.Test) error {
 	ctx := context.Background()
 
-	// Vlaidate datset exists
+	// Ensure the dataset exists
 	if err := r.ensureDatasetExists(ctx); err != nil {
 		return err
 	}
@@ -81,14 +92,26 @@ func (r *TestRunner) LoadTestData(test *models.Test) error {
 	// Read the CSV file
 	records, err := fileutil.ReadCSVFile(test.InputFile)
 	if err != nil {
-		return fmt.Errorf("Failed to read input CSV: %v", err)
+		return fmt.Errorf("failed to read input CSV: %v", err)
 	}
 
-	// Create a schema based on the first row of the CSV
-	var schema bigquery.Schema
+	if len(records) < 2 {
+		return fmt.Errorf("CSV file must contain at least a header row and one data row")
+	}
+
 	headers := records[0]
+
+	// Create schema based on the CSV headers and overrides
+	schema := bigquery.Schema{}
 	for _, header := range headers {
-		schema = append(schema, &bigquery.FieldSchema{Name: header, Type: bigquery.StringFieldType})
+		fieldType := bigquery.StringFieldType // Default to string
+		if override, ok := test.SchemaOverrides[header]; ok {
+			fieldType = getBigQueryFieldType(override)
+		}
+		schema = append(schema, &bigquery.FieldSchema{
+			Name: formatFieldName(header),
+			Type: fieldType,
+		})
 	}
 
 	// Create the table
@@ -98,12 +121,16 @@ func (r *TestRunner) LoadTestData(test *models.Test) error {
 	}
 
 	// Prepare the data for insertion
-	var rows [][]bigquery.Value
+	var rows []map[string]bigquery.Value
 	for _, record := range records[1:] { // Skip the header row
-		row := make([]bigquery.Value, len(headers))
+		row := make(map[string]bigquery.Value)
 		for i, value := range record {
 			if i < len(headers) {
-				row[i] = value
+				convertedValue, err := convertValue(value, schema[i].Type)
+				if err != nil {
+					return fmt.Errorf("failed to convert value: %v", err)
+				}
+				row[formatFieldName(headers[i])] = convertedValue
 			}
 		}
 		rows = append(rows, row)
@@ -116,6 +143,46 @@ func (r *TestRunner) LoadTestData(test *models.Test) error {
 	}
 
 	return nil
+}
+
+func formatFieldName(s string) string {
+	// Capitalize the first letter and remove any non-alphanumeric characters
+	r := []rune(s)
+	return string(append([]rune{unicode.ToUpper(r[0])}, r[1:]...))
+}
+
+func getBigQueryFieldType(typeString string) bigquery.FieldType {
+	switch strings.ToUpper(typeString) {
+	case "INTEGER":
+		return bigquery.IntegerFieldType
+	case "FLOAT":
+		return bigquery.FloatFieldType
+	case "BOOLEAN":
+		return bigquery.BooleanFieldType
+	case "TIMESTAMP":
+		return bigquery.TimestampFieldType
+	case "DATE":
+		return bigquery.DateFieldType
+	default:
+		return bigquery.StringFieldType
+	}
+}
+
+func convertValue(value string, fieldType bigquery.FieldType) (bigquery.Value, error) {
+	switch fieldType {
+	case bigquery.IntegerFieldType:
+		return strconv.ParseInt(value, 10, 64)
+	case bigquery.FloatFieldType:
+		return strconv.ParseFloat(value, 64)
+	case bigquery.BooleanFieldType:
+		return strconv.ParseBool(value)
+	case bigquery.TimestampFieldType:
+		return time.Parse(time.RFC3339, value)
+	case bigquery.DateFieldType:
+		return civil.ParseDate(value)
+	default:
+		return value, nil
+	}
 }
 
 // I am still shaky on this function... Need to look over it

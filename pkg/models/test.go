@@ -9,13 +9,20 @@ import (
 
 // Test represents a single BigQuery test case
 type Test struct {
-	Name           string     `yaml:"name"`
-	QueryFile      string     `yaml:"query_file"`
-	InputFile      string     `yaml:"input_file"`
-	ExpectedOutput string     `yaml:"expected_output"`
-	TableName      string     `yaml:"table_name"`
-	query          string     // cached query content
-	expectedData   [][]string // cached expected output data
+	Name            string            `yaml:"name"`
+	QueryFile       string            `yaml:"query_file"`
+	SchemaOverrides map[string]string `yaml:"schema_overrides"`
+	InputFile       string            `yaml:"input_file"`
+	ExpectedOutput  string            `yaml:"expected_output"`
+	TableName       string            `yaml:"table_name"`
+	query           string            // cached query content
+	expectedData    [][]string        // cached expected output data
+}
+
+func (t *Test) ResolvePaths(basePath string) {
+	t.InputFile = filepath.Join(basePath, t.InputFile)
+	t.QueryFile = filepath.Join(basePath, t.QueryFile)
+	t.ExpectedOutput = filepath.Join(basePath, t.ExpectedOutput)
 }
 
 func (t *Test) Validate() error {
@@ -42,6 +49,14 @@ func (t *Test) Validate() error {
 	}
 	if t.TableName == "" {
 		return errors.New("table name cannot be empty")
+	}
+	for field, dataType := range t.SchemaOverrides {
+		if field == "" {
+			return errors.New("schema override field name cannot be empty")
+		}
+		if dataType == "" {
+			return errors.New("schema override data type cannot be empty")
+		}
 	}
 	return nil
 }

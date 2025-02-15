@@ -1,7 +1,10 @@
 base_path: ./tests
 tests:
   - name: Test User Count
-    query_file: tests/queries/user_count.sql
-    input_file: tests/inputs/users.csv
+    input_file: inputs/users.csv
+    schema_overrides:
+      age: INTEGER
+    query_file: queries/user_count.sql
     expected_output: expected/user_count.csv
     table_name: users
+

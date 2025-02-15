@@ -31,6 +31,17 @@ func ParseTestConfig(filename string) (*TestConfig, error) {
 	// Set the base path if not provided
 	if config.BasePath == "" {
 		config.BasePath = filepath.Dir(filename)
+	} else {
+		if !filepath.IsAbs(config.BasePath) {
+			config.BasePath = filepath.Join(filepath.Dir(filename), config.BasePath)
+		}
+	}
+
+	for i, test := range config.Tests {
+		config.Tests[i].ResolvePaths(config.BasePath)
+		if test.SchemaOverrides == nil {
+			config.Tests[i].SchemaOverrides = make(map[string]string)
+		}
 	}
 
 	return &config, nil
